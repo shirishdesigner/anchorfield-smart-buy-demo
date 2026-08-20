@@ -38,12 +38,34 @@ jobs:
 
       - name: Prepare GitHub Pages entry point
         run: |
+          set -e
           if [ -f .output/public/_shell.html ]; then
             cp .output/public/_shell.html .output/public/index.html
           elif [ ! -f .output/public/index.html ]; then
-            echo "No index.html or _shell.html found in .output/public"
-            find .output/public -maxdepth 2 -type f | sort | head -100
-            exit 1
+            entry_js=$(find .output/public/assets -maxdepth 1 -type f -name 'index-*.js' | head -1)
+            style_css=$(find .output/public/assets -maxdepth 1 -type f -name 'styles-*.css' | head -1)
+            if [ -z "$entry_js" ]; then
+              echo "No SPA entry JavaScript found"
+              find .output/public/assets -maxdepth 1 -type f | sort
+              exit 1
+            fi
+            entry_js="${entry_js#.output/public/}"
+            style_css="${style_css#.output/public/}"
+            cat > .output/public/index.html <<EOF
+          <!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="UTF-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+              <title>AnchorField Smart Buy</title>
+              ${style_css:+<link rel="stylesheet" href="./$style_css" />}
+            </head>
+            <body>
+              <div id="root"></div>
+              <script type="module" src="./$entry_js"></script>
+            </body>
+          </html>
+          EOF
           fi
           cp .output/public/index.html .output/public/404.html
 
