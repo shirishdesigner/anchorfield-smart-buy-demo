@@ -42,23 +42,53 @@ jobs:
           set -euo pipefail
           public_dir=".output/public"
 
-          if [ -f "$public_dir/index.html" ]; then
-            echo "Using TanStack generated index.html."
-            cp "$public_dir/index.html" "$public_dir/404.html"
-          elif [ -f "$public_dir/_shell.html" ]; then
-            cp "$public_dir/_shell.html" "$public_dir/index.html"
-            cp "$public_dir/_shell.html" "$public_dir/404.html"
-            echo "Using TanStack generated SPA shell."
-          else
-            echo "No TanStack entry point was generated."
+          # TanStack Start's current SPA build is producing the client assets but
+          # not a static document. Use the source project's static Vite entry as
+          # the Pages document and rewrite the asset URLs for the Pages base path.
+          entry="$GITHUB_WORKSPACE/index.html"
+          if [ ! -f "$entry" ]; then
+            echo "Source index.html was not found."
+            exit 1
+          fi
+
+          cp "$entry" "$public_dir/index.html"
+          cp "$entry" "$public_dir/404.html"
+
+          # The source entry points to /src/main.tsx for local development.
+          # Replace it with the generated client entry produced by the build.
+          entry_js=$(find "$public_dir/assets" -maxdepth 1 -type f -name 'index-*.js' | head -1)
+          style_css=$(find "$public_dir/assets" -maxdepth 1 -type f -name 'styles-*.css' | head -1)
+
+          if [ -z "$entry_js" ]; then
+            echo "No generated client entry JavaScript found."
             find "$public_dir" -maxdepth 2 -type f | sort
             exit 1
           fi
+
+          entry_js="${entry_js#${public_dir}/}"
+          style_css="${style_css#${public_dir}/}"
+
+          python3 - "$public_dir/index.html" "$entry_js" "$style_css" <<'PY'
+          import sys
+          from pathlib import Path
+          html_path = Path(sys.argv[1])
+          entry_js = sys.argv[2]
+          style_css = sys.argv[3]
+          html = html_path.read_text()
+          html = html.replace('<script type="module" src="/src/main.tsx"></script>', f'<script type="module" src="./{entry_js}"></script>')
+          if style_css and f'./{style_css}' not in html:
+              html = html.replace('</head>', f'<link rel="stylesheet" href="./{style_css}"></head>')
+          html_path.write_text(html)
+          Path(html_path.parent / '404.html').write_text(html)
+          PY
+
+          echo "Generated Pages entry using $entry_js"
 
       - name: Verify Pages files
         run: |
           test -f .output/public/index.html
           test -f .output/public/404.html
+          grep -q 'assets/index-' .output/public/index.html
           echo "Pages entry points verified."
           find .output/public -maxdepth 2 -type f | sort | head -80
 
