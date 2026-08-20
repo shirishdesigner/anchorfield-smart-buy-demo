@@ -37,15 +37,57 @@ jobs:
         run: npm run build
 
       - name: Prepare GitHub Pages entry point
+        shell: bash
         run: |
-          set -e
-          if [ ! -f .output/public/_shell.html ]; then
-            echo "Expected TanStack SPA shell was not generated"
-            find .output/public -maxdepth 2 -type f | sort
+          set -euo pipefail
+          public_dir=".output/public"
+
+          if [ -f "$public_dir/_shell.html" ]; then
+            cp "$public_dir/_shell.html" "$public_dir/index.html"
+            cp "$public_dir/_shell.html" "$public_dir/404.html"
+            echo "Using TanStack generated SPA shell."
+            exit 0
+          fi
+
+          echo "TanStack shell was not generated; creating a Vite SPA entry from the client bundle."
+          entry_js=$(find "$public_dir/assets" -maxdepth 1 -type f -name 'index-*.js' | head -1)
+          style_css=$(find "$public_dir/assets" -maxdepth 1 -type f -name 'styles-*.css' | head -1)
+
+          if [ -z "$entry_js" ]; then
+            echo "No client entry JavaScript found."
+            find "$public_dir" -maxdepth 2 -type f | sort
             exit 1
           fi
-          cp .output/public/_shell.html .output/public/index.html
-          cp .output/public/_shell.html .output/public/404.html
+
+          entry_js="${entry_js#${public_dir}/}"
+          style_css="${style_css#${public_dir}/}"
+
+          cat > "$public_dir/index.html" <<EOF
+          <!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <meta name="theme-color" content="#FBFAF8">
+              <title>Anchorfield — Financial-Grade Buyer's Advocacy</title>
+              ${style_css:+<link rel="stylesheet" href="./$style_css">}
+            </head>
+            <body>
+              <div id="root"></div>
+              <script type="module" src="./$entry_js"></script>
+            </body>
+          </html>
+          EOF
+
+          cp "$public_dir/index.html" "$public_dir/404.html"
+          echo "Generated index.html using $entry_js"
+
+      - name: Verify Pages files
+        run: |
+          test -f .output/public/index.html
+          test -f .output/public/404.html
+          echo "Pages entry points verified."
+          find .output/public -maxdepth 2 -type f | sort | head -80
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
