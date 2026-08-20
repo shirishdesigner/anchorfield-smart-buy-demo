@@ -36,6 +36,17 @@ jobs:
       - name: Build static SPA
         run: npm run build
 
+      - name: Prepare GitHub Pages entry point
+        run: |
+          if [ -f .output/public/_shell.html ]; then
+            cp .output/public/_shell.html .output/public/index.html
+          elif [ ! -f .output/public/index.html ]; then
+            echo "No index.html or _shell.html found in .output/public"
+            find .output/public -maxdepth 2 -type f | sort | head -100
+            exit 1
+          fi
+          cp .output/public/index.html .output/public/404.html
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
